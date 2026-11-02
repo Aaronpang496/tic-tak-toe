@@ -1,6 +1,7 @@
 import streamlit as st
 import random
 import math
+import time
 
 st.set_page_config(page_title="Tic-Tac-Toe AI", page_icon="❌", layout="centered")
 
@@ -12,14 +13,31 @@ st.markdown("""
     .stApp { background-color: #1a1a2e; color: #ffffff; font-family: 'Nunito', sans-serif; }
     h1, h2, h3 { text-align: center; color: #e94560; text-transform: uppercase; letter-spacing: 2px; }
     
-    /* Grid Buttons */
-    .stButton>button {
-        height: 80px; width: 100%; font-size: 40px; font-weight: 900; border-radius: 10px;
-        background-color: #16213e; color: #e94560; border: 2px solid #0f3460; transition: 0.2s;
+    /* Perfect Grid Styling */
+    div[data-testid="stHorizontalBlock"] {
+        gap: 5px !important;
     }
-    .stButton>button:hover { background-color: #0f3460; border-color: #e94560; }
-    
-    .stButton>button:disabled { background-color: #1a1a2e; color: #0f3460; border: 1px solid #0f3460; }
+    .stButton>button {
+        aspect-ratio: 1 / 1; /* Makes them perfect squares */
+        width: 100% !important; 
+        font-size: 40px !important; 
+        font-weight: 900 !important; 
+        border-radius: 10px !important;
+        background-color: #16213e !important; 
+        color: #e94560 !important; 
+        border: 2px solid #0f3460 !important; 
+        transition: 0.2s !important;
+        padding: 0px !important;
+    }
+    .stButton>button:hover:enabled { 
+        background-color: #0f3460 !important; 
+        border-color: #e94560 !important; 
+    }
+    .stButton>button:disabled { 
+        background-color: #1a1a2e !important; 
+        color: #0f3460 !important; 
+        border: 1px solid #0f3460 !important; 
+    }
     
     .status-box { text-align: center; font-size: 24px; font-weight: bold; margin: 20px 0; padding: 15px; border-radius: 10px; background-color: #0f3460; }
     
@@ -83,15 +101,12 @@ def get_best_move(board, size, difficulty):
     empty_cells = get_empty_cells(board)
     if not empty_cells: return None
     
-    # EASY: 80% chance to pick a random move (can be stupid)
     if difficulty == "Easy" and random.random() < 0.8:
         return random.choice(empty_cells)
     
-    # MEDIUM: 30% chance to pick a random move (makes mistakes sometimes)
     if difficulty == "Medium" and random.random() < 0.3:
         return random.choice(empty_cells)
         
-    # IMPOSSIBLE (or the 20%/70% chance for Easy/Medium): Use Minimax
     best_score = -math.inf
     best_move = random.choice(empty_cells)
     
@@ -114,20 +129,25 @@ if "board" not in st.session_state:
     st.session_state.difficulty = "Medium"
 
 # --- SETTINGS ---
-if st.session_state.turn == "X" and not st.session_state.winner:
-    with st.sidebar:
-        st.header("⚙️ Game Settings")
-        
-        grid_size = st.selectbox("Grid Size", [3, 4, 5], index=0)
-        difficulty = st.selectbox("AI Difficulty", ["Easy", "Medium", "Impossible"], index=1)
-        
-        if st.button("🔄 Restart Game", type="primary", use_container_width=True):
-            st.session_state.size = grid_size
-            st.session_state.board = [""] * (grid_size * grid_size)
-            st.session_state.turn = "X"
-            st.session_state.winner = None
-            st.session_state.difficulty = difficulty
-            st.rerun()
+with st.sidebar:
+    st.header("⚙️ Game Settings")
+    
+    # Only allow changing settings on a new game
+    if st.session_state.turn == "X" and not st.session_state.winner:
+        grid_size = st.selectbox("Grid Size", [3, 4, 5], index=st.session_state.size - 3)
+        difficulty = st.selectbox("AI Difficulty", ["Easy", "Medium", "Impossible"], index=["Easy", "Medium", "Impossible"].index(st.session_state.difficulty))
+    else:
+        grid_size = st.session_state.size
+        difficulty = st.session_state.difficulty
+        st.info("Restart the game to change settings.")
+    
+    if st.button("🔄 Restart Game", type="primary", use_container_width=True):
+        st.session_state.size = grid_size
+        st.session_state.board = [""] * (grid_size * grid_size)
+        st.session_state.turn = "X"
+        st.session_state.winner = None
+        st.session_state.difficulty = difficulty
+        st.rerun()
 
 # --- RENDER GRID ---
 status_text = ""
@@ -155,10 +175,7 @@ for i in range(size * size):
         val = st.session_state.board[i]
         if val == "":
             if st.button(" ", key=f"cell_{i}", disabled=st.session_state.turn == "O" or st.session_state.winner is not None):
-                # Human Move
                 st.session_state.board[i] = "X"
-                
-                # Check win
                 st.session_state.winner = check_winner(st.session_state.board, size)
                 if not st.session_state.winner and not is_full(st.session_state.board):
                     st.session_state.turn = "O"
@@ -171,13 +188,12 @@ for i in range(size * size):
 # --- AI TURN ---
 if st.session_state.turn == "O" and not st.session_state.winner:
     with st.spinner("AI is calculating..."):
-        time.sleep(0.5) # Tiny delay to make it feel natural
+        time.sleep(0.5) 
         ai_move = get_best_move(st.session_state.board, size, st.session_state.difficulty)
         
         if ai_move is not None:
             st.session_state.board[ai_move] = "O"
             
-            # Check win
             st.session_state.winner = check_winner(st.session_state.board, size)
             if not st.session_state.winner and not is_full(st.session_state.board):
                 st.session_state.turn = "X"
