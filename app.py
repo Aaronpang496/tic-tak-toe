@@ -1,27 +1,25 @@
 import streamlit as st
 import requests
-import random
 import time
 import json
 import os
+import random
 
 st.set_page_config(page_title="Game Dev Copilot", page_icon="👾", layout="wide")
 
+# --- PASTE YOUR *NEW* TOGETHER AI KEY HERE ---
+TOGETHER_API_KEY = "key_CgeBE2peok5kXgojctPRo"
+
 # --- FILE STORAGE LOGIC ---
 SAVE_FILE = "saved_games.json"
-
 def load_games():
     if os.path.exists(SAVE_FILE):
         try:
-            with open(SAVE_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return {}
+            with open(SAVE_FILE, "r") as f: return json.load(f)
+        except: return {}
     return {}
-
 def save_games(games_dict):
-    with open(SAVE_FILE, "w") as f:
-        json.dump(games_dict, f)
+    with open(SAVE_FILE, "w") as f: json.dump(games_dict, f)
 
 # --- CYBERPUNK CHAT UI ---
 st.markdown("""
@@ -47,31 +45,67 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #2ea043; color: white; }
     
-    .stTextInput>div>div>input {
-        background-color: #010409; color: #c9d1d9; border: 1px solid #30363d; font-family: 'Fira Code', monospace;
-    }
-    
     section[data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid #30363d; }
-    
     header {visibility: hidden;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
+# --- THE AI ENGINE (TOGETHER AI) ---
+def generate_code_with_ai(user_prompt):
+    url = "https://api.together.xyz/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {TOGETHER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    system_prompt = """
+    You are an expert Streamlit Python developer. 
+    The user will describe a mini-game or visual effect they want.
+    You must write the Python code to make it happen.
+    
+    RULES:
+    1. Use `st.button()`, `st.write()`, and `st.balloons()` or `st.snow()` for visuals.
+    2. Only output the Python code. Do not write any conversational text or markdown formatting like ```python.
+    3. Keep the code under 30 lines so it runs fast.
+    4. Assume `import streamlit as st` and `import random` are already imported.
+    """
+    
+    payload = {
+        "model": "meta-llama/Llama-3-70b-chat-hf",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 500
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        if response.status_code == 200:
+            code = response.json()['choices'][0]['message']['content'].strip()
+            if code.startswith("```python"): code = code[9:]
+            if code.startswith("```"): code = code[3:]
+            if code.endswith("```"): code = code[:-3]
+            return code.strip()
+        else:
+            return f"Error: API returned {response.status_code}. Check your key."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 # --- STATE INITIALIZATION ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "I am your game dev AI. Tell me what game to build, and I'll write the Python code for you. You can then save it to your library!"}
+        {"role": "assistant", "content": "I am your AI Game Dev. Tell me any game to build (e.g., 'Make a snake game', 'A text adventure', 'A clicker game'). I will write the code instantly!"}
     ]
 if "code_to_run" not in st.session_state:
     st.session_state.code_to_run = ""
-
-# Load from file on startup
 if "saved_games" not in st.session_state:
     st.session_state.saved_games = load_games()
 
-# --- SIDEBAR: SAVED GAMES LIBRARY ---
+# --- SIDEBAR: SAVED GAMES ---
 with st.sidebar:
     st.markdown("### 📂 My Saved Games")
     if not st.session_state.saved_games:
@@ -84,11 +118,15 @@ with st.sidebar:
                 st.rerun()
             if col2.button("🗑️", key=f"del_{game_name}"):
                 del st.session_state.saved_games[game_name]
-                save_games(st.session_state.saved_games) # Update file
+                save_games(st.session_state.saved_games)
                 st.rerun()
 
 # --- MAIN UI ---
 st.markdown("<h1>👾 Game Dev Copilot</h1>", unsafe_allow_html=True)
+
+if TOGETHER_API_KEY == "PASTE_YOUR_NEW_KEY_HERE":
+    st.error("⚠️ Please paste your NEW Together AI Key on line 12 of the code to enable the AI.")
+    st.stop()
 
 # --- LIVE VISUALS PANEL ---
 st.write("### 🎨 Live Visual Effects")
@@ -118,62 +156,42 @@ chat_col, game_col = st.columns([1, 1])
 with chat_col:
     st.markdown("### 💬 AI Chat")
     
-    # Display chat messages
     for msg in st.session_state.messages:
         if msg["role"] == "user":
             st.markdown(f'<div class="user-msg">{msg["content"]}</div>', unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="ai-msg">{msg["content"]}</div>', unsafe_allow_html=True)
 
-    # Input
     with st.form(key="chat_form", clear_on_submit=True):
-        user_input = st.text_input("Describe your game...", placeholder="e.g., Code a guessing game.")
+        user_input = st.text_input("Describe your game...", placeholder="e.g., Make a snake game")
         submit = st.form_submit_button("Send to AI")
 
     if submit and user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
         
-        with st.spinner("AI is coding..."):
-            prompt = f"""
-            You are an expert Streamlit game developer. 
-            The user wants to build this: "{user_input}"
+        with st.spinner("AI is coding your game..."):
+            ai_code = generate_code_with_ai(user_input)
+            st.session_state.messages.append({"role": "assistant", "content": ai_code})
             
-            Write the exact Python code needed to make this happen. 
-            Use `st.balloons()`, `st.snow()`, or `st.toast()` to add visual flair.
-            Only output the Python code block. Keep it under 30 lines.
-            """
-            try:
-                response = requests.get(f"https://text.pollinations.ai/{requests.utils.quote(prompt)}", timeout=15)
-                if response.status_code == 200:
-                    ai_code = response.text.strip()
-                    if ai_code.startswith("```python"): ai_code = ai_code[9:]
-                    if ai_code.endswith("```"): ai_code = ai_code[:-3]
-                    st.session_state.messages.append({"role": "assistant", "content": ai_code.strip()})
-                else:
-                    st.error("AI server busy.")
-            except:
-                st.error("Connection failed.")
         st.rerun()
 
-    # Code Execution & Save Buttons
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
         last_code = st.session_state.messages[-1]["content"]
         
-        if "st." in last_code:
+        if "st." in last_code and "Error" not in last_code:
             st.markdown('<div class="run-btn">', unsafe_allow_html=True)
             if st.button("▶️ EXECUTE AI CODE"):
                 st.session_state.code_to_run = last_code
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
             
-            # SAVE GAME (Now writes to physical file)
             with st.expander("💾 Save this Game"):
-                game_name = st.text_input("Name your game:", placeholder="e.g., Space Clicker")
+                game_name = st.text_input("Name your game:", placeholder="e.g., Snake Game")
                 if st.button("Save to Library"):
                     if game_name:
                         st.session_state.saved_games[game_name] = last_code
-                        save_games(st.session_state.saved_games) # Save to JSON file
-                        st.success(f"Saved '{game_name}' successfully to disk!")
+                        save_games(st.session_state.saved_games)
+                        st.success(f"Saved '{game_name}' successfully!")
                         time.sleep(1)
                         st.rerun()
 
@@ -182,7 +200,6 @@ with game_col:
     
     if st.session_state.code_to_run:
         game_container = st.container()
-        
         with game_container:
             try:
                 exec(st.session_state.code_to_run)
@@ -194,4 +211,4 @@ with game_col:
             st.session_state.code_to_run = ""
             st.rerun()
     else:
-        st.info("No game running. Ask the AI to build one, or load a saved game from the sidebar!")
+        st.info("No game running. Ask the AI to build one!")
